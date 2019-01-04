@@ -238,6 +238,16 @@ type (
 		// Worker should skip syncing shards and leases at startup if leases are present
 		// This is useful for optimizing deployments to large fleets working on a stable stream.
 		SkipShardSyncAtWorkerInitializationIfLeasesExist bool
+
+		// UseEnhancedFanout controls whether this consumer uses enhanced fan-out.
+		// Enhanced fan-out is an Amazon Kinesis Data Streams feature that enables consumers to receive
+		// records from a data stream with dedicated throughput of up to 2 MiB of data per second per shard.
+		// A consumer that uses enhanced fan-out doesn't have to contend with other consumers that are receiving data from the stream.
+		// For more information, see: https://docs.aws.amazon.com/streams/latest/dev/introduction-to-enhanced-consumers.html
+		UseEnhancedFanout bool
+
+		// AccountID is the ID of the account the kinesis stream belongs to.  Required for enhanced fan-out.
+		AccountID string
 	}
 )
 

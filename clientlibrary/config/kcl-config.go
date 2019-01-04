@@ -34,8 +34,9 @@
 package config
 
 import (
-	"github.com/vmware/vmware-go-kcl/clientlibrary/utils"
 	"time"
+
+	"github.com/vmware/vmware-go-kcl/clientlibrary/utils"
 )
 
 // NewKinesisClientLibConfig to create a default KinesisClientLibConfiguration based on the required fields.
@@ -169,5 +170,17 @@ func (c *KinesisClientLibConfiguration) WithMetricsBufferTimeMillis(metricsBuffe
 func (c *KinesisClientLibConfiguration) WithMetricsMaxQueueSize(metricsMaxQueueSize int) *KinesisClientLibConfiguration {
 	checkIsValuePositive("MetricsMaxQueueSize", metricsMaxQueueSize)
 	c.MetricsMaxQueueSize = metricsMaxQueueSize
+	return c
+}
+
+// WithUseEnhancedFanout configures whether this consumer uses enhanced fan-out.
+func (c *KinesisClientLibConfiguration) WithUseEnhancedFanout(useEnhancedFanout bool) *KinesisClientLibConfiguration {
+	c.UseEnhancedFanout = useEnhancedFanout
+	return c
+}
+
+// AccountID configures the account the provided stream is associated with.
+func (c *KinesisClientLibConfiguration) WithAccountID(accountID string) *KinesisClientLibConfiguration {
+	c.AccountID = accountID
 	return c
 }

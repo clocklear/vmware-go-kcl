@@ -29,12 +29,14 @@ package worker
 
 import (
 	"errors"
-	log "github.com/sirupsen/logrus"
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -79,9 +81,11 @@ func (ss *shardStatus) setLeaseOwner(owner string) {
  * the shards).
  */
 type Worker struct {
-	streamName string
-	regionName string
-	workerID   string
+	streamName  string
+	regionName  string
+	workerID    string
+	consumerARN string
+	streamARN   string
 
 	processorFactory kcl.IRecordProcessorFactory
 	kclConfig        *config.KinesisClientLibConfiguration
@@ -108,6 +112,7 @@ func NewWorker(factory kcl.IRecordProcessorFactory, kclConfig *config.KinesisCli
 		processorFactory: factory,
 		kclConfig:        kclConfig,
 		metricsConfig:    metricsConfig,
+		streamARN:        fmt.Sprintf("arn:aws:kinesis:%v:%v:/stream/%v", kclConfig.RegionName, kclConfig.AccountID, kclConfig.StreamName)
 	}
 
 	// create session for Kinesis
@@ -140,6 +145,19 @@ func (w *Worker) Start() error {
 		return err
 	}
 
+	// Are we running in enhanced fan-out mode?  If so, register our stream consumer
+	if w.kclConfig.UseEnhancedFanout {
+		rsco, err := w.kc.RegisterStreamConsumer(&kinesis.RegisterStreamConsumerInput{
+			ConsumerName: &w.kclConfig.ApplicationName,
+			StreamARN:    &w.streamARN,
+		})
+		if err != nil {
+			log.Errorf("Failed to register stream consumer: %+v", err)
+			return err
+		}
+		w.consumerARN = *rsco.Consumer.ConsumerARN
+	}
+
 	log.Info("Starting worker event loop.")
 	// entering event loop
 	go w.eventLoop()
@@ -149,6 +167,18 @@ func (w *Worker) Start() error {
 // Shutdown signals worker to shutdown. Worker will try initiating shutdown of all record processors.
 func (w *Worker) Shutdown() {
 	log.Info("Worker shutdown in requested.")
+
+	// Are we running in enhanced fan-out mode?  If so, deregister our stream consumer
+	if w.kclConfig.UseEnhancedFanout {
+		_, err := w.kc.DeregisterStreamConsumer(&kinesis.DeregisterStreamConsumerInput{
+			ConsumerARN: &w.consumerARN,
+			ConsumerName: &w.kclConfig.ApplicationName,
+			StreamARN: &w.streamARN,
+		})
+		if err != nil {
+			log.Errorf("Failed to deregister stream consumer: %+v", err)
+		}
+	}
 
 	close(*w.stop)
 	w.waitGroup.Wait()
@@ -329,9 +359,9 @@ func (w *Worker) getShardIDs(startShardID string, shardInfo map[string]bool) err
 		if _, ok := w.shardStatus[*s.ShardId]; !ok {
 			log.Infof("Found new shard with id %s", *s.ShardId)
 			w.shardStatus[*s.ShardId] = &shardStatus{
-				ID:            *s.ShardId,
-				ParentShardId: aws.StringValue(s.ParentShardId),
-				mux:           &sync.Mutex{},
+				ID:                     *s.ShardId,
+				ParentShardId:          aws.StringValue(s.ParentShardId),
+				mux:                    &sync.Mutex{},
 				StartingSequenceNumber: aws.StringValue(s.SequenceNumberRange.StartingSequenceNumber),
 				EndingSequenceNumber:   aws.StringValue(s.SequenceNumberRange.EndingSequenceNumber),
 			}
